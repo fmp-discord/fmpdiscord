@@ -8,83 +8,7 @@ import random
 from datetime import datetime, timedelta
 from pytz import utc
 import requests
-from pymongo import MongoClient
-from pymongo.server_api import ServerApi
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from datetime import datetime, timedelta
 
-# Load your Flask app
-app = Flask(__name__)
-CORS(app, resources={r"/submit": {"origins": "https://fmp-discord.github.io"}})
-
-# MongoDB connection URI for MongoDB Atlas cluster
-uri = "mongodb+srv://Bijay:bijay%40123@cluster0.hpl6qfx.mongodb.net/db_discord?retryWrites=true&w=majority"
-
-# Create a new client and connect to the server
-client = MongoClient(uri, server_api=ServerApi('1'))
-
-# Send a ping to confirm a successful connection
-try:
-    client.admin.command('ping')
-    print("Pinged your deployment. You successfully connected to MongoDB!")
-    print("Connected to the database.")
-except Exception as e:
-    print(e)
-
-# Database and collection names
-db = client.db_discord
-users_collection = db.tbl_discord
-
-# Route to handle POST requests from the frontend
-@app.route('/submit', methods=['POST'])
-def submit():
-    data = request.json  # Assume the request contains JSON data
-
-    discord_id = data['discord_id']
-    username = data.get('username')
-    server = data.get('server')
-    
-    user = users_collection.find_one({"userid": discord_id})
-    
-    if user:
-        current_time = datetime.now()
-        last_visit = user['updatedat']
-        if current_time < last_visit + timedelta(hours=1):
-            time_remaining = last_visit + timedelta(hours=1) - current_time
-            print(f"User {discord_id} needs to wait for {time_remaining.seconds // 60} more minutes.")
-            return jsonify({
-                "message": f"Come back after {time_remaining.seconds // 60} minutes to get more points.",
-                "total_points": user['points']
-            })
-        else:
-            updated_user = {
-                "$set": {"username": username or f"user_{discord_id}", "server": server, "updatedat": current_time},
-                "$inc": {"points": 2}
-            }
-            users_collection.update_one({"userid": discord_id}, updated_user)
-            user = users_collection.find_one({"userid": discord_id})
-            print(f"Updated user {discord_id} at {current_time}. Total points: {user['points']}")
-            return jsonify({
-                "message": "Thanks! You got 2 points.",
-                "total_points": user['points']
-            })
-    else:
-        current_time = datetime.now()
-        new_user = {
-            "username": username or f"user_{discord_id}",
-            "userid": discord_id,
-            "createdat": current_time,
-            "updatedat": current_time,
-            "points": 2,
-            "server": server
-        }
-        users_collection.insert_one(new_user)
-        print(f"Inserted new user {discord_id} at {current_time}. Total points: 2")
-        return jsonify({
-            "message": "Thanks! You got 2 points.",
-            "total_points": 2
-        })
 
 # Load config from config.json
 with open('config.json', 'r') as config_file:
@@ -107,6 +31,7 @@ def save_config():
     with open('config.json', 'w') as config_file:
         json.dump(config, config_file, indent=4)
 
+# Function to check if user is an administrator, admin, or owner based on role IDs
 # Function to check if user is an administrator, admin, or owner based on role IDs
 def is_administrator(user: discord.Member, server_config) -> bool:
     admin_role_ids = server_config.get('admin_role_ids', [])
@@ -156,6 +81,9 @@ def check_blacklist():
             return await func(interaction, *args, **kwargs)
         return wrapper
     return decorator
+# Checking new term ------------------
+API_URL = 'http://127.0.0.1:5000'
+
 
 # Decorator to check if the command is used in the allowed category
 def check_category():
@@ -289,38 +217,18 @@ async def execute_whitelisted_command(interaction: discord.Interaction, director
         await interaction.response.send_message(f"No {command_name} cookie files are available right now. Please try again later.", ephemeral=True)
 
 async def execute_regular_command(interaction: discord.Interaction, directory: str, command_name: str, cooldown_hours: int, last_command_usage: list):
-    user_id = interaction.user.id
-    server_config = get_server_config(interaction.guild.id)
-
-    # Ensure user is registered in the database
-    user = users_collection.find_one({"userid": user_id})
-    if not user:
-        # Register the user with 0 points
-        current_time = datetime.now()
-        new_user = {
-            "username": interaction.user.name,
-            "userid": user_id,
-            "createdat": current_time,
-            "updatedat": current_time,
-            "points": 0,
-            "server": interaction.guild.id,
-            "cookies": []
-        }
-        users_collection.insert_one(new_user)
-        print(f"Registered new user {user_id} at {current_time}.")
-    
-    # Check if user has enough points to use the command
-    if not can_use_command(user_id, last_command_usage, cooldown_hours):
+    if not can_use_command(interaction.user.id, last_command_usage, cooldown_hours):
         remaining_time = None
         cooldown_duration = timedelta(hours=cooldown_hours)
         for entry in last_command_usage:
-            if entry['user_id'] == user_id:
+            if entry['user_id'] == interaction.user.id:
                 last_usage_time = datetime.strptime(
                     entry['time'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=utc)
                 now = datetime.now(utc)
                 remaining_time = (last_usage_time + cooldown_duration) - now
                 break
 
+    
         if remaining_time:
             hours, remainder = divmod(remaining_time.total_seconds(), 3600)
             minutes, _ = divmod(remainder, 60)
@@ -330,7 +238,6 @@ async def execute_regular_command(interaction: discord.Interaction, directory: s
             )
         return
 
-    # Proceed with sending files if user has enough points
     files = [file for file in os.listdir(directory) if file.endswith('.txt')]
     if files:
         random_file = random.choice(files)
@@ -345,7 +252,7 @@ async def execute_regular_command(interaction: discord.Interaction, directory: s
 
         # Update last_command_usage and save it
         last_command_usage.append({
-            'user_id': user_id,
+            'user_id': interaction.user.id,
             'user_name': interaction.user.name,
             'command_used': command_name,
             'time': datetime.now(utc).strftime("%Y-%m-%d %H:%M:%S"),
@@ -461,35 +368,23 @@ async def check_stock(interaction: discord.Interaction, category: str):
 bot.tree.add_command(check_stock)
 
 
-# Command to send a predefined link with user ID
-@app_commands.command(name="link", description="Send a predefined link with user ID")
-@check_blacklist()
-@check_category()
-async def send_link(interaction: discord.Interaction):
-    # Replace 'YOUR_LINK_HERE' with your actual link template
-    link = f"https://nanolinks.in/discordCookie"
-    userid = interaction.user.id
-    await interaction.response.send_message(f"Here is your link: {link} and you user id : {userid}", ephemeral=True)
+# Define your link command
+@bot.command(name='link')
+async def link(ctx, discord_id: str):
+    short_link = f'{API_URL}/claim_points'
+    await ctx.send(f'Use this link to claim your points: {short_link}')
 
-bot.tree.add_command(send_link)
-
-# Command to check user points/status
-@app.route('/status', methods=['GET'])
-def check_status():
-    user_id = request.args.get('userid')
-    if not user_id:
-        return jsonify({"error": "User ID is required."}), 400
-    
-    user = users_collection.find_one({"userid": user_id})
-    if user:
-        return jsonify({
-            "userid": user_id,
-            "points": user['points']
-        })
+# Define your status command
+@bot.command(name='status')
+async def status(ctx):
+    discord_id = str(ctx.author.id)
+    response = requests.get(f'{API_URL}/status/{discord_id}')
+    if response.status_code == 200:
+        data = response.json()
+        await ctx.send(f'You have {data["points"]} points.')
     else:
-        return jsonify({"error": "User not found."}), 404
+        await ctx.send('Error fetching status.')
 
-bot.tree.add_command(check_status)
 # Event listener for errors
 @bot.event
 async def on_ready():

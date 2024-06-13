@@ -8,83 +8,10 @@ import random
 from datetime import datetime, timedelta
 from pytz import utc
 import requests
-from pymongo import MongoClient
-from pymongo.server_api import ServerApi
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from datetime import datetime, timedelta
+import pymongo
+from datetime import datetime
 
-# Load your Flask app
-app = Flask(__name__)
-CORS(app, resources={r"/submit": {"origins": "https://fmp-discord.github.io"}})
 
-# MongoDB connection URI for MongoDB Atlas cluster
-uri = "mongodb+srv://Bijay:bijay%40123@cluster0.hpl6qfx.mongodb.net/db_discord?retryWrites=true&w=majority"
-
-# Create a new client and connect to the server
-client = MongoClient(uri, server_api=ServerApi('1'))
-
-# Send a ping to confirm a successful connection
-try:
-    client.admin.command('ping')
-    print("Pinged your deployment. You successfully connected to MongoDB!")
-    print("Connected to the database.")
-except Exception as e:
-    print(e)
-
-# Database and collection names
-db = client.db_discord
-users_collection = db.tbl_discord
-
-# Route to handle POST requests from the frontend
-@app.route('/submit', methods=['POST'])
-def submit():
-    data = request.json  # Assume the request contains JSON data
-
-    discord_id = data['discord_id']
-    username = data.get('username')
-    server = data.get('server')
-    
-    user = users_collection.find_one({"userid": discord_id})
-    
-    if user:
-        current_time = datetime.now()
-        last_visit = user['updatedat']
-        if current_time < last_visit + timedelta(hours=1):
-            time_remaining = last_visit + timedelta(hours=1) - current_time
-            print(f"User {discord_id} needs to wait for {time_remaining.seconds // 60} more minutes.")
-            return jsonify({
-                "message": f"Come back after {time_remaining.seconds // 60} minutes to get more points.",
-                "total_points": user['points']
-            })
-        else:
-            updated_user = {
-                "$set": {"username": username or f"user_{discord_id}", "server": server, "updatedat": current_time},
-                "$inc": {"points": 2}
-            }
-            users_collection.update_one({"userid": discord_id}, updated_user)
-            user = users_collection.find_one({"userid": discord_id})
-            print(f"Updated user {discord_id} at {current_time}. Total points: {user['points']}")
-            return jsonify({
-                "message": "Thanks! You got 2 points.",
-                "total_points": user['points']
-            })
-    else:
-        current_time = datetime.now()
-        new_user = {
-            "username": username or f"user_{discord_id}",
-            "userid": discord_id,
-            "createdat": current_time,
-            "updatedat": current_time,
-            "points": 2,
-            "server": server
-        }
-        users_collection.insert_one(new_user)
-        print(f"Inserted new user {discord_id} at {current_time}. Total points: 2")
-        return jsonify({
-            "message": "Thanks! You got 2 points.",
-            "total_points": 2
-        })
 
 # Load config from config.json
 with open('config.json', 'r') as config_file:
@@ -99,15 +26,22 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Function to get server-specific configurations
+
+
 def get_server_config(guild_id):
     return config['servers'].get(str(guild_id))
 
 # Function to save the updated config back to the config.json file
+
+
 def save_config():
     with open('config.json', 'w') as config_file:
         json.dump(config, config_file, indent=4)
 
 # Function to check if user is an administrator, admin, or owner based on role IDs
+# Function to check if user is an administrator, admin, or owner based on role IDs
+
+
 def is_administrator(user: discord.Member, server_config) -> bool:
     admin_role_ids = server_config.get('admin_role_ids', [])
 
@@ -119,6 +53,8 @@ def is_administrator(user: discord.Member, server_config) -> bool:
 
 # Decorator to check if user is an administrator
 # Decorator to check if user is an administrator
+
+
 def check_admin():
     def decorator(func):
         @wraps(func)
@@ -126,7 +62,7 @@ def check_admin():
             if interaction.guild is None:
                 await interaction.response.send_message("This command cannot be used in direct messages.", ephemeral=True)
                 return
-            
+
             server_id = str(interaction.guild.id)
             server_config = get_server_config(server_id)
 
@@ -137,6 +73,46 @@ def check_admin():
         return wrapper
     return decorator
 
+# Checking new term ------------------
+API_URL = 'http://127.0.0.1:5000'
+MONGODB_CONNECTION_STRING = "mongodb+srv://Bijay:bijay%40123@cluster0.hpl6qfx.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+# Function to fetch or register user in MongoDB
+def fetch_or_register_user(discord_id, username=None, servername=None):
+    try:
+        # Connect to MongoDB
+        client = pymongo.MongoClient(MONGODB_CONNECTION_STRING)
+
+        # Access the database and collection
+        db = client['db_discord']
+        collection = db['tbl_discord']  # Define your collection name
+
+        # Query MongoDB for user based on discord_id
+        user = collection.find_one({'userid': discord_id})
+
+        if user:
+            return user  # Return user document if found
+        else:
+            # User not found, register new user
+            new_user = {
+                'username': username or f'user_{discord_id}',  # Default username if not provided
+                'userid': discord_id,
+                'createdat': datetime.now(utc),  # Use datetime.now(utc) for UTC time
+                'updatedat': datetime.now(utc),  # Use datetime.now(utc) for UTC time
+                'points': 0,
+                'server': servername  # Set server name if provided
+            }
+            collection.insert_one(new_user)
+            return new_user  # Return newly registered user document
+
+    except Exception as e:
+        print(f'Error querying/registering user in MongoDB: {e}')
+        return None
+
+    finally:
+        client.close()  # Close the MongoDB client
+        
+        
+        
 # Decorator to check if the user is blacklisted
 def check_blacklist():
     def decorator(func):
@@ -145,7 +121,7 @@ def check_blacklist():
             if interaction.guild is None:
                 await interaction.response.send_message("This command cannot be used in direct messages.", ephemeral=True)
                 return
-            
+
             server_config = get_server_config(interaction.guild.id)
             if interaction.user.id in server_config['blacklist_uids']:
                 await interaction.response.send_message(
@@ -157,6 +133,7 @@ def check_blacklist():
         return wrapper
     return decorator
 
+
 # Decorator to check if the command is used in the allowed category
 def check_category():
     def decorator(func):
@@ -165,12 +142,13 @@ def check_category():
             if interaction.guild is None:
                 await interaction.response.send_message("This command cannot be used in direct messages.", ephemeral=True)
                 return
-            
+
             server_config = get_server_config(interaction.guild.id)
 
             if interaction.channel.category_id != server_config['allowed_category_id']:
                 await interaction.response.send_message(
-                    f"This command can only be used in the specific category. Please use it [here]({server_config['category_link']}).",
+                    f"This command can only be used in the specific category. Please use it [here]({
+                        server_config['category_link']}).",
                     ephemeral=True
                 )
                 return
@@ -179,6 +157,8 @@ def check_category():
     return decorator
 
 # Function to log command usage
+
+
 async def log_command_usage(interaction: discord.Interaction, command_name: str, file_name: str):
     server_config = get_server_config(interaction.guild.id)
     log_channel = bot.get_channel(server_config['bot_log'])
@@ -188,6 +168,8 @@ async def log_command_usage(interaction: discord.Interaction, command_name: str,
         await log_channel.send(f"{user_mention} used `{command_name}` command and received `{file_name}` at {timestamp} UTC")
 
 # Function to check if a user can use a command (once per cooldown period)
+
+
 def can_use_command(user_id: int, last_command_usage: list, cooldown_hours: int) -> bool:
     cooldown_duration = timedelta(hours=cooldown_hours)
     for entry in last_command_usage:
@@ -200,6 +182,8 @@ def can_use_command(user_id: int, last_command_usage: list, cooldown_hours: int)
     return True
 
 # Function to load cooldowns from JSON
+
+
 def load_cooldowns():
     try:
         with open('cooldowns.json', 'r', encoding='utf-8') as f:
@@ -212,6 +196,8 @@ def load_cooldowns():
     return cooldown_data
 
 # Function to load cooldowns from TXT
+
+
 def load_cooldowns_txt():
     cooldown_txt_file = 'cooldowns.txt'
     try:
@@ -235,6 +221,8 @@ def load_cooldowns_txt():
 
 # Function to save last command usage times to file
 # Function to save last command usage times to file
+
+
 def save_cooldowns(new_entries):
     cooldown_file = 'cooldowns.json'
     cooldown_txt_file = 'cooldowns.txt'
@@ -249,7 +237,8 @@ def save_cooldowns(new_entries):
 
     # Save to JSON file
     with open(cooldown_file, 'w', encoding='utf-8') as f:
-        json.dump(existing_cooldowns, f, indent=4, default=str, ensure_ascii=False)
+        json.dump(existing_cooldowns, f, indent=4,
+                  default=str, ensure_ascii=False)
 
     # Save to TXT file
     with open(cooldown_txt_file, 'w', encoding='utf-8') as f:
@@ -273,6 +262,7 @@ async def handle_cookie_command(interaction: discord.Interaction, directory: str
     else:
         await execute_regular_command(interaction, directory, command_name, cooldown_hours, last_command_usage)
 
+
 async def execute_whitelisted_command(interaction: discord.Interaction, directory: str, command_name: str):
     files = [file for file in os.listdir(directory) if file.endswith('.txt')]
     if files:
@@ -288,75 +278,60 @@ async def execute_whitelisted_command(interaction: discord.Interaction, director
     else:
         await interaction.response.send_message(f"No {command_name} cookie files are available right now. Please try again later.", ephemeral=True)
 
+
 async def execute_regular_command(interaction: discord.Interaction, directory: str, command_name: str, cooldown_hours: int, last_command_usage: list):
     user_id = interaction.user.id
-    server_config = get_server_config(interaction.guild.id)
-
-    # Ensure user is registered in the database
-    user = users_collection.find_one({"userid": user_id})
-    if not user:
-        # Register the user with 0 points
-        current_time = datetime.now()
-        new_user = {
-            "username": interaction.user.name,
-            "userid": user_id,
-            "createdat": current_time,
-            "updatedat": current_time,
-            "points": 0,
-            "server": interaction.guild.id,
-            "cookies": []
-        }
-        users_collection.insert_one(new_user)
-        print(f"Registered new user {user_id} at {current_time}.")
+    user = fetch_or_register_user(user_id)
     
-    # Check if user has enough points to use the command
-    if not can_use_command(user_id, last_command_usage, cooldown_hours):
-        remaining_time = None
-        cooldown_duration = timedelta(hours=cooldown_hours)
-        for entry in last_command_usage:
-            if entry['user_id'] == user_id:
-                last_usage_time = datetime.strptime(
-                    entry['time'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=utc)
-                now = datetime.now(utc)
-                remaining_time = (last_usage_time + cooldown_duration) - now
-                break
-
-        if remaining_time:
-            hours, remainder = divmod(remaining_time.total_seconds(), 3600)
-            minutes, _ = divmod(remainder, 60)
-            await interaction.response.send_message(
-                f"You can use this command again in {int(hours)} hours and {int(minutes)} minutes on {last_usage_time.strftime('%Y-%m-%d')}.",
-                ephemeral=True
-            )
+    if not user:
+        await interaction.response.send_message("Failed to fetch or register user.", ephemeral=True)
         return
 
-    # Proceed with sending files if user has enough points
+    # Check if user has enough points
+    if user['points'] < 2:
+        await interaction.response.send_message("You don't have enough points to use this command. Get 2 points by visiting: https://nanolinks.in/discordCookie", ephemeral=True)
+        return
+    
+    # Deduct 2 points from user
+    try:
+        new_points = user['points'] - 2
+        
+        # Connect to MongoDB
+        client = pymongo.MongoClient(MONGODB_CONNECTION_STRING)
+        db = client['db_discord']
+        collection = db['tbl_discord']  # Replace with your actual collection name
+
+        # Update points in MongoDB
+        collection.update_one({'userid': user_id}, {'$set': {'points': new_points}})
+        
+        await interaction.response.send_message(f"Your 2 points have been deducted. Your remaining points: {new_points}.", ephemeral=True)
+    
+    except Exception as e:
+        await interaction.response.send_message(f"Failed to deduct points: {e}", ephemeral=True)
+        return
+    
+    finally:
+        client.close()  # Close the MongoDB client
+    
+    # After deducting points, proceed with sending the file
     files = [file for file in os.listdir(directory) if file.endswith('.txt')]
     if files:
         random_file = random.choice(files)
         file_path = os.path.join(directory, random_file)
-        await interaction.response.send_message(f"Sending you a random cookie file: `{random_file}`", ephemeral=True)
+        
         try:
             await interaction.user.send(file=discord.File(file_path))
+            await log_command_usage(interaction, command_name, random_file)
+        
         except discord.errors.Forbidden:
-            await interaction.followup.send("I cannot send you a direct message. Please enable DMs and try again.", ephemeral=True)
-            return
-        await log_command_usage(interaction, command_name, random_file)
-
-        # Update last_command_usage and save it
-        last_command_usage.append({
-            'user_id': user_id,
-            'user_name': interaction.user.name,
-            'command_used': command_name,
-            'time': datetime.now(utc).strftime("%Y-%m-%d %H:%M:%S"),
-            'cooldown_time': (datetime.now(utc) + timedelta(hours=cooldown_hours)).strftime("%Y-%m-%d %H:%M:%S"),
-            'file_name': random_file
-        })
-        save_cooldowns(last_command_usage)
+            await interaction.response.send_message("I cannot send you a direct message. Please enable DMs and try again.", ephemeral=True)
+    
     else:
         await interaction.response.send_message(f"No {command_name} cookie files are available right now. Please try again later.", ephemeral=True)
 
 # Function to create cookie commands
+
+
 def create_cookie_command(command_name, directory_key, description):
     @app_commands.command(name=command_name, description=description)
     @check_blacklist()
@@ -371,13 +346,21 @@ def create_cookie_command(command_name, directory_key, description):
             await interaction.response.send_message(f"The directory '{directory_key}' is not configured or does not exist.", ephemeral=True)
     bot.tree.add_command(cookie_command)
 
+
+
 # Create specific cookie commands with descriptions
-create_cookie_command("netflixcookie", 'netflix', "Get a random Netflix cookie!")
-create_cookie_command("spotifycookie", 'spotify', "Get a random Spotify cookie!")
-create_cookie_command("primecookie", 'prime', "Get a random Prime Video cookie!")
-create_cookie_command("crunchyrollcookie", 'crunchyroll', "Get a random Crunchyroll cookie!")
+create_cookie_command("netflixcookie", 'netflix',
+                      "Get a random Netflix cookie!")
+create_cookie_command("spotifycookie", 'spotify',
+                      "Get a random Spotify cookie!")
+create_cookie_command("primecookie", 'prime',
+                      "Get a random Prime Video cookie!")
+create_cookie_command("crunchyrollcookie", 'crunchyroll',
+                      "Get a random Crunchyroll cookie!")
 
 # Command to say hello
+
+
 @app_commands.command(name="hello", description="Say hello to the bot")
 @check_blacklist()
 @check_category()
@@ -386,6 +369,8 @@ async def say_hello(interaction: discord.Interaction):
 bot.tree.add_command(say_hello)
 
 # Command to whitelist a user
+
+
 @app_commands.command(name="whitelist", description="Whitelist a user to use commands")
 @check_admin()
 async def whitelist_user(interaction: discord.Interaction, user: discord.Member):
@@ -404,6 +389,8 @@ async def whitelist_user(interaction: discord.Interaction, user: discord.Member)
     await interaction.response.send_message(f"User {user.mention} has been whitelisted.", ephemeral=True)
 
 # Command to blacklist a user
+
+
 @app_commands.command(name="blacklist", description="Blacklist a user from using commands")
 @check_admin()
 async def blacklist_user(interaction: discord.Interaction, user: discord.Member):
@@ -417,6 +404,8 @@ async def blacklist_user(interaction: discord.Interaction, user: discord.Member)
 bot.tree.add_command(blacklist_user)
 
 # Command to remove a user from the blacklist
+
+
 @app_commands.command(name="removeblacklist", description="Remove a user from the blacklist")
 @check_admin()
 async def remove_blacklist_user(interaction: discord.Interaction, user: discord.Member):
@@ -442,14 +431,16 @@ async def check_stock(interaction: discord.Interaction, category: str):
     if category.lower() == "all":
         for key, directory in directories.items():
             if os.path.exists(directory):
-                file_count = len([file for file in os.listdir(directory) if file.endswith('.txt')])
+                file_count = len([file for file in os.listdir(
+                    directory) if file.endswith('.txt')])
                 response += f"{key.capitalize()}: {file_count} files\n"
             else:
                 response += f"{key.capitalize()}: Directory not found\n"
     elif category.lower() in directories:
         directory = directories[category.lower()]
         if os.path.exists(directory):
-            file_count = len([file for file in os.listdir(directory) if file.endswith('.txt')])
+            file_count = len([file for file in os.listdir(
+                directory) if file.endswith('.txt')])
             response = f"{category.capitalize()}: {file_count} files"
         else:
             response = f"{category.capitalize()}: Directory not found"
@@ -460,37 +451,46 @@ async def check_stock(interaction: discord.Interaction, category: str):
 
 bot.tree.add_command(check_stock)
 
+        
+# Define your link command
+@bot.command(name='link')
+async def link(ctx):
+    discord_id = ctx.author.id  # Get the Discord ID of the user invoking the command
+    username = ctx.author.name  # Get the username of the user invoking the command
 
-# Command to send a predefined link with user ID
-@app_commands.command(name="link", description="Send a predefined link with user ID")
-@check_blacklist()
-@check_category()
-async def send_link(interaction: discord.Interaction):
-    # Replace 'YOUR_LINK_HERE' with your actual link template
-    link = f"https://nanolinks.in/discordCookie"
-    userid = interaction.user.id
-    await interaction.response.send_message(f"Here is your link: {link} and you user id : {userid}", ephemeral=True)
+    try:
+        user = fetch_or_register_user(discord_id, username)
 
-bot.tree.add_command(send_link)
+        if user:
+            # Assuming 'link' is a field you retrieve or generate based on your application logic
+            await ctx.send(f'Use this link to claim your points: https://nanolinks.in/discordCookie and your user id is {ctx.author.id}')
+        else:
+            await ctx.send('Error: Failed to register or fetch user.')
 
-# Command to check user points/status
-@app.route('/status', methods=['GET'])
-def check_status():
-    user_id = request.args.get('userid')
-    if not user_id:
-        return jsonify({"error": "User ID is required."}), 400
-    
-    user = users_collection.find_one({"userid": user_id})
-    if user:
-        return jsonify({
-            "userid": user_id,
-            "points": user['points']
-        })
-    else:
-        return jsonify({"error": "User not found."}), 404
+    except Exception as e:
+        await ctx.send(f'Error processing link command: {e}')
 
-bot.tree.add_command(check_status)
+
+# Define your status command
+@bot.command(name='status')
+async def status(ctx):
+    discord_id = ctx.author.id
+
+    try:
+        user = fetch_or_register_user(discord_id)
+
+        if user:
+            points = user.get('points', 0)
+            await ctx.send(f'You have {points} points.')
+        else:
+            await ctx.send('Error: Failed to register or fetch user.')
+
+    except Exception as e:
+        await ctx.send(f'Error processing status command: {e}')
+
 # Event listener for errors
+
+
 @bot.event
 async def on_ready():
     print("Bot is ready and connected")
@@ -507,6 +507,8 @@ async def on_ready():
         print(f"Error counting loaded commands: {e}")
 
 # Event listener for errors
+
+
 @bot.event
 async def on_error(event, *args, **kwargs):
     server_config = get_server_config(event.guild.id)
