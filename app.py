@@ -25,11 +25,17 @@ except Exception as e:
 db = client.db_discord
 users_collection = db.tbl_discord
 
+# Ensure the collection exists, create it if it doesn't
+if "tbl_discord" not in db.list_collection_names():
+    users_collection = db.create_collection("tbl_discord")
+else:
+    users_collection = db.tbl_discord
+
 @app.route('/submit', methods=['POST'])
 def submit():
     data = request.json  # Assume the request contains JSON data
 
-    discord_id = data['discord_id']
+    discord_id = int(data['discord_id'])  # Convert to integer
     username = data.get('username')
     server = data.get('server')
     cookies = data.get('cookies', [])
