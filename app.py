@@ -38,7 +38,7 @@ def submit():
     discord_id = int(data['discord_id'])  # Convert to integer
     username = data.get('username')
     server = data.get('server')
-    cookies = data.get('cookies', [])
+
     current_time = datetime.now()
     
     user = users_collection.find_one({"userid": discord_id})
@@ -64,14 +64,14 @@ def submit():
                 "total_points": user['points']
             })
     else:
+        # Create new user document without 'cookies' field
         new_user = {
             "username": username or f"user_{discord_id}",
             "userid": discord_id,
             "createdat": current_time,
             "updatedat": current_time,
             "points": 2,
-            "server": server,
-            "cookies": cookies
+            "server": server
         }
         users_collection.insert_one(new_user)
         print(f"Inserted new user {discord_id} at {current_time}. Total points: 2")
