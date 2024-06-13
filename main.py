@@ -3,7 +3,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import json
-import os
+import os  
 import random
 from datetime import datetime, timedelta
 from pytz import utc
@@ -168,18 +168,17 @@ async def log_command_usage(interaction: discord.Interaction, command_name: str,
         await log_channel.send(f"{user_mention} used `{command_name}` command and received `{file_name}` at {timestamp} UTC")
 
 # Function to check if a user can use a command (once per cooldown period)
-
-
-def can_use_command(user_id: int, last_command_usage: list, cooldown_hours: int) -> bool:
+async def can_use_command(user_id: int, command_name: str, last_command_usage: list, cooldown_hours: int) -> bool:
     cooldown_duration = timedelta(hours=cooldown_hours)
+    now = datetime.now(utc)
+
     for entry in last_command_usage:
-        if entry['user_id'] == user_id:
-            last_usage_time = datetime.strptime(
-                entry['time'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=utc)
-            now = datetime.now(utc)
+        if entry['user_id'] == user_id and entry['command_used'] == command_name:
+            last_usage_time = datetime.strptime(entry['time'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=utc)
             if now - last_usage_time < cooldown_duration:
                 return False
     return True
+
 
 # Function to load cooldowns from JSON
 
@@ -196,33 +195,19 @@ def load_cooldowns():
     return cooldown_data
 
 # Function to load cooldowns from TXT
-
-
-def load_cooldowns_txt():
-    cooldown_txt_file = 'cooldowns.txt'
+def load_cooldowns():
     try:
-        cooldowns = []
-        with open(cooldown_txt_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-            i = 0
-            while i < len(lines):
-                entry = {}
-                entry['user_id'] = int(lines[i].strip().split(': ')[1])
-                entry['user_name'] = lines[i + 1].strip().split(': ')[1]
-                entry['command_used'] = lines[i + 2].strip().split(': ')[1]
-                entry['time'] = lines[i + 3].strip().split(': ')[1]
-                entry['cooldown_time'] = lines[i + 4].strip().split(': ')[1]
-                entry['file_name'] = lines[i + 5].strip().split(': ')[1]
-                cooldowns.append(entry)
-                i += 6
-        return cooldowns
+        with open('cooldowns.json', 'r', encoding='utf-8') as f:
+            try:
+                cooldown_data = json.load(f)
+            except json.JSONDecodeError:
+                cooldown_data = []  # Initialize as empty list if file is empty or malformed
     except FileNotFoundError:
-        return []
+        cooldown_data = []  # Initialize as empty list if file doesn't exist
+    return cooldown_data
+
 
 # Function to save last command usage times to file
-# Function to save last command usage times to file
-
-
 def save_cooldowns(new_entries):
     cooldown_file = 'cooldowns.json'
     cooldown_txt_file = 'cooldowns.txt'
@@ -237,8 +222,7 @@ def save_cooldowns(new_entries):
 
     # Save to JSON file
     with open(cooldown_file, 'w', encoding='utf-8') as f:
-        json.dump(existing_cooldowns, f, indent=4,
-                  default=str, ensure_ascii=False)
+        json.dump(existing_cooldowns, f, indent=4, default=str, ensure_ascii=False)
 
     # Save to TXT file
     with open(cooldown_txt_file, 'w', encoding='utf-8') as f:
@@ -250,7 +234,6 @@ def save_cooldowns(new_entries):
             f.write(f"Cooldown Time: {entry['cooldown_time']}\n")
             f.write(f"File Name: {entry['file_name']}\n")
             f.write("\n")
-
 
 # Function to handle the sending of a random cookie file
 async def handle_cookie_command(interaction: discord.Interaction, directory: str, command_name: str, cooldown_hours: int, last_command_usage: list):
@@ -287,19 +270,21 @@ async def execute_regular_command(interaction: discord.Interaction, directory: s
         await interaction.response.send_message("Failed to fetch or register user.", ephemeral=True)
         return
 
-    # Check if user has enough points
     if user['points'] < 2:
         await interaction.response.send_message("You don't have enough points to use this command. Get 2 points by visiting: https://nanolinks.in/discordCookie", ephemeral=True)
         return
+
+    if not await can_use_command(user_id, command_name, last_command_usage, cooldown_hours):
+        await interaction.response.send_message(f"You can use this command only once every {cooldown_hours} hours.", ephemeral=True)
+        return
     
-    # Deduct 2 points from user
     try:
         new_points = user['points'] - 2
         
         # Connect to MongoDB
         client = pymongo.MongoClient(MONGODB_CONNECTION_STRING)
         db = client['db_discord']
-        collection = db['tbl_discord']  # Replace with your actual collection name
+        collection = db['tbl_discord']
 
         # Update points in MongoDB
         collection.update_one({'userid': user_id}, {'$set': {'points': new_points}})
@@ -311,14 +296,27 @@ async def execute_regular_command(interaction: discord.Interaction, directory: s
         return
     
     finally:
-        client.close()  # Close the MongoDB client
-    
-    # After deducting points, proceed with sending the file
+        client.close()
+
+    # Log command usage
+    timestamp = datetime.now(utc).strftime("%Y-%m-%d %H:%M:%S")
+    cooldown_time = (datetime.now(utc) + timedelta(hours=cooldown_hours)).strftime("%Y-%m-%d %H:%M:%S")
     files = [file for file in os.listdir(directory) if file.endswith('.txt')]
     if files:
         random_file = random.choice(files)
         file_path = os.path.join(directory, random_file)
-        
+
+        new_entry = {
+            'user_id': user_id,
+            'user_name': interaction.user.name,
+            'command_used': command_name,
+            'time': timestamp,
+            'cooldown_time': cooldown_time,
+            'file_name': random_file  # Update with actual file name
+        }
+        last_command_usage.append(new_entry)
+        save_cooldowns([new_entry])
+
         try:
             await interaction.user.send(file=discord.File(file_path))
             await log_command_usage(interaction, command_name, random_file)
@@ -326,6 +324,21 @@ async def execute_regular_command(interaction: discord.Interaction, directory: s
         except discord.errors.Forbidden:
             await interaction.response.send_message("I cannot send you a direct message. Please enable DMs and try again.", ephemeral=True)
     
+    else:
+        await interaction.response.send_message(f"No {command_name} cookie files are available right now. Please try again later.", ephemeral=True)
+
+async def execute_whitelisted_command(interaction: discord.Interaction, directory: str, command_name: str):
+    files = [file for file in os.listdir(directory) if file.endswith('.txt')]
+    if files:
+        random_file = random.choice(files)
+        file_path = os.path.join(directory, random_file)
+        await interaction.response.send_message(f"Sending you a random cookie file: `{random_file}`", ephemeral=True)
+        try:
+            await interaction.user.send(file=discord.File(file_path))
+        except discord.errors.Forbidden:
+            await interaction.followup.send("I cannot send you a direct message. Please enable DMs and try again.", ephemeral=True)
+            return
+        await log_command_usage(interaction, command_name, random_file)
     else:
         await interaction.response.send_message(f"No {command_name} cookie files are available right now. Please try again later.", ephemeral=True)
 

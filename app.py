@@ -45,23 +45,31 @@ def submit():
     
     if user:
         last_visit = user['updatedat']
-        if current_time < last_visit + timedelta(hours=1):
+        points = user['points']
+        
+        # Check if user has reached the maximum points in 24 hours
+        if current_time < last_visit + timedelta(hours=24) and points >= 10:
+            return jsonify({
+                "message": "You have reached the maximum points allowed in 24 hours.",
+                "total_points": points
+            })
+        elif current_time < last_visit + timedelta(hours=1):
             time_remaining = last_visit + timedelta(hours=1) - current_time
-            print(f"User {discord_id} needs to wait for {time_remaining.seconds // 60} more minutes.")
             return jsonify({
                 "message": f"Come back after {time_remaining.seconds // 60} minutes to get more points.",
-                "total_points": user['points']
+                "total_points": points
             })
         else:
+            # Update points and last visit time
+            new_points = min(points + 2, 10)  # Limit points to maximum 10 per 24 hours
             users_collection.update_one(
                 {"userid": discord_id}, 
                 {"$set": {"updatedat": current_time}, "$inc": {"points": 2}}
             )
-            user = users_collection.find_one({"userid": discord_id})
-            print(f"Updated user {discord_id} at {current_time}. Total points: {user['points']}")
+            updated_user = users_collection.find_one({"userid": discord_id})
             return jsonify({
                 "message": "Thanks! You got 2 points.",
-                "total_points": user['points']
+                "total_points": updated_user['points']
             })
     else:
         # Create new user document without 'cookies' field
@@ -74,7 +82,6 @@ def submit():
             "server": server
         }
         users_collection.insert_one(new_user)
-        print(f"Inserted new user {discord_id} at {current_time}. Total points: 2")
         return jsonify({
             "message": "Thanks! You got 2 points.",
             "total_points": 2
