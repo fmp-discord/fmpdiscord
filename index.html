@@ -116,25 +116,26 @@
 
         <div id="result"></div>
     </div>
+
     <script>
         // Retrieve saved Discord User ID from localStorage if available
         const savedDiscordId = localStorage.getItem('savedDiscordId');
         if (savedDiscordId) {
             document.getElementById('discord_id').value = savedDiscordId;
         }
-    
+
         document.getElementById('pointsForm').addEventListener('submit', function (event) {
             event.preventDefault();
-    
+
             const formData = new FormData(event.target);
             const data = {};
             formData.forEach((value, key) => {
                 data[key] = value;
             });
-    
+
             // Save Discord User ID to localStorage for future suggestions
             localStorage.setItem('savedDiscordId', data['discord_id']);
-    
+
             fetch('http://localhost:5000/submit', {
                 method: 'POST',
                 headers: {
@@ -149,7 +150,7 @@
                     message += `<br>Come back after ${Math.floor(result.cooldown_time)} hours and ${Math.round((result.cooldown_time - Math.floor(result.cooldown_time)) * 60)} minutes.`;
                 }
                 message += `<br>Your total points: ${result.total_points}<br>Total points you have: ${result.total_points}`;
-    
+
                 // Clear previous content of #result and set new content
                 document.getElementById('result').innerHTML = `<p>${message}</p>`;
             })
@@ -159,5 +160,5 @@
         });
     </script>
     
-    </body>
+</body>
 </html>
