@@ -125,19 +125,19 @@
         if (savedDiscordId) {
             document.getElementById('discord_id').value = savedDiscordId;
         }
-
+        
         document.getElementById('pointsForm').addEventListener('submit', function (event) {
             event.preventDefault();
-
+            
             const formData = new FormData(event.target);
             const data = {};
             formData.forEach((value, key) => {
                 data[key] = value;
             });
-
+            
             // Save Discord User ID to localStorage for future suggestions
             localStorage.setItem('savedDiscordId', data['discord_id']);
-
+            
             fetch('http://localhost:5000/submit', {
                 method: 'POST',
                 headers: {
@@ -145,27 +145,28 @@
                 },
                 body: JSON.stringify(data)
             })
-                .then(response => response.json())
-                .then(result => {
-                    let message = "";
-                    if (result.message.includes("Thanks! You got 2 points.")) {
-                        if (result.cooldown_time) {
-                            message = `You got 2 points.<br>Your total points: ${result.total_points}<br>Next usage available in ${result.cooldown_time} hours.`;
-                        } else {
-                            message = `You got 2 points.<br>Your total points: ${result.total_points}`;
-                        }
-                    } else if (result.message.includes("You have reached the maximum points allowed in 24 hours.")) {
-                        message = `You reached the maximum points in 24 hours.<br>Your total points: ${result.total_points}<br>Next usage available after 24 hours.`;
+            .then(response => response.json())
+            .then(result => {
+                let message = "";
+                if (result.message.includes("Thanks! You got 2 points.")) {
+                    if (result.cooldown_time) {
+                        message = `You got 2 points.<br>Your total points: ${result.total_points}<br>Next usage available in ${result.cooldown_time} hours.`;
                     } else {
-                        message = result.message;
+                        message = `You got 2 points.<br>Your total points: ${result.total_points}`;
                     }
-                    document.getElementById('result').innerHTML = `<p>${message}</p>`;
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
+                } else if (result.message.includes("You have reached the maximum points allowed in 24 hours.")) {
+                    message = `You reached the maximum points in 24 hours.<br>Your total points: ${result.total_points}<br>Next usage available after 24 hours.`;
+                } else {
+                    message = result.message;
+                }
+                document.getElementById('result').innerHTML = `<p>${message}</p>`;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
         });
     </script>
+    
 
 
 </body>
