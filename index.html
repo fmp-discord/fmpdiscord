@@ -116,7 +116,6 @@
 
         <div id="result"></div>
     </div>
-
     <script>
         // Retrieve saved Discord User ID from localStorage if available
         const savedDiscordId = localStorage.getItem('savedDiscordId');
@@ -143,20 +142,19 @@
                 },
                 body: JSON.stringify(data)
             })
-                .then(response => response.json())
-                .then(result => {
-                    let message = result.message;
-                    if (result.cooldown_time) {
-                        message += `<br>Come back after ${Math.floor(result.cooldown_time)} hours and ${Math.round((result.cooldown_time - Math.floor(result.cooldown_time)) * 60)} minutes.`;
-                    }
-                    message += `<br>Your total points: ${result.total_points}<br>${result.total_points_message}`;
-                    document.getElementById('result').innerHTML = `<p>${message}</p>`;
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
+            .then(response => response.json())
+            .then(result => {
+                let message = result.message;
+                if (result.cooldown_time) {
+                    message += `<br>Come back after ${Math.floor(result.cooldown_time)} hours and ${Math.round((result.cooldown_time - Math.floor(result.cooldown_time)) * 60)} minutes.`;
+                }
+                message += `<br>Your total points: ${result.total_points}<br>Total points you have: ${result.total_points}`;
+                document.getElementById('result').innerHTML = `<p>${message}</p>`;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
         });
     </script>
-    
-</body>
+    </body>
 </html>
