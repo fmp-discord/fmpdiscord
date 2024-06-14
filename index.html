@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -105,39 +104,38 @@
         }
     </style>
 </head>
-
 <body>
     <div class="container">
         <h1>Enter Discord User ID</h1>
         <form id="pointsForm">
             <label for="discord_id">User ID (Discord):</label>
-            <input type="number" id="discord_id" name="discord_id" pattern="[0-9]*"
-                placeholder="Enter your Discord User ID" required>
-
+            <input type="number" id="discord_id" name="discord_id" pattern="[0-9]*" placeholder="Enter your Discord User ID" required>
+            
             <input type="submit" value="Submit">
         </form>
 
         <div id="result"></div>
     </div>
+
     <script>
         // Retrieve saved Discord User ID from localStorage if available
         const savedDiscordId = localStorage.getItem('savedDiscordId');
         if (savedDiscordId) {
             document.getElementById('discord_id').value = savedDiscordId;
         }
-        
+    
         document.getElementById('pointsForm').addEventListener('submit', function (event) {
             event.preventDefault();
-            
+    
             const formData = new FormData(event.target);
             const data = {};
             formData.forEach((value, key) => {
                 data[key] = value;
             });
-            
+    
             // Save Discord User ID to localStorage for future suggestions
             localStorage.setItem('savedDiscordId', data['discord_id']);
-            
+    
             fetch('http://localhost:5000/submit', {
                 method: 'POST',
                 headers: {
@@ -145,30 +143,20 @@
                 },
                 body: JSON.stringify(data)
             })
-            .then(response => response.json())
-            .then(result => {
-                let message = "";
-                if (result.message.includes("Thanks! You got 2 points.")) {
+                .then(response => response.json())
+                .then(result => {
+                    let message = result.message;
                     if (result.cooldown_time) {
-                        message = `You got 2 points.<br>Your total points: ${result.total_points}<br>Next usage available in ${result.cooldown_time} hours.`;
-                    } else {
-                        message = `You got 2 points.<br>Your total points: ${result.total_points}`;
+                        message += `<br>Come back after ${Math.floor(result.cooldown_time)} hours and ${Math.round((result.cooldown_time - Math.floor(result.cooldown_time)) * 60)} minutes.`;
                     }
-                } else if (result.message.includes("You have reached the maximum points allowed in 24 hours.")) {
-                    message = `You reached the maximum points in 24 hours.<br>Your total points: ${result.total_points}<br>Next usage available after 24 hours.`;
-                } else {
-                    message = result.message;
-                }
-                document.getElementById('result').innerHTML = `<p>${message}</p>`;
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
+                    message += `<br>Your total points: ${result.total_points}<br>${result.total_points_message}`;
+                    document.getElementById('result').innerHTML = `<p>${message}</p>`;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
         });
     </script>
     
-
-
 </body>
-
 </html>
