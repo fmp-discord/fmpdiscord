@@ -149,6 +149,8 @@
                     message += `<br>Come back after ${Math.floor(result.cooldown_time)} hours and ${Math.round((result.cooldown_time - Math.floor(result.cooldown_time)) * 60)} minutes.`;
                 }
                 message += `<br>Your total points: ${result.total_points}<br>Total points you have: ${result.total_points}`;
+    
+                // Clear previous content of #result and set new content
                 document.getElementById('result').innerHTML = `<p>${message}</p>`;
             })
             .catch(error => {
@@ -156,5 +158,6 @@
             });
         });
     </script>
+    
     </body>
 </html>
