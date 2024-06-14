@@ -66,6 +66,7 @@
         }
 
         input[type="number"],
+        input[type="text"],
         input[type="submit"] {
             width: calc(100% - 20px);
             padding: 10px;
@@ -109,7 +110,10 @@
         <h1>Enter Discord User ID</h1>
         <form id="pointsForm">
             <label for="discord_id">User ID (Discord):</label>
-            <input type="number" id="discord_id" name="discord_id" pattern="[0-9]*" placeholder="Enter your Discord User ID" required>
+            <input type="number" id="discord_id" name="discord_id" placeholder="Enter your Discord User ID" required>
+            
+            <label for="server">Server UID:</label>
+            <input type="text" id="server" name="server" placeholder="Enter the Server UID" required>
             
             <input type="submit" value="Submit">
         </form>
@@ -146,8 +150,10 @@
             .then(response => response.json())
             .then(result => {
                 let message = result.message;
-                if (result.cooldown_time) {
-                    message += `<br>Come back after ${Math.floor(result.cooldown_time)} hours and ${Math.round((result.cooldown_time - Math.floor(result.cooldown_time)) * 60)} minutes.`;
+                if (result.cooldown_time_minutes) {
+                    const hours = Math.floor(result.cooldown_time_minutes / 60);
+                    const minutes = Math.floor(result.cooldown_time_minutes % 60);
+                    message += `<br>Come back after ${hours} hours and ${minutes} minutes.`;
                 }
                 message += `<br>Your total points: ${result.total_points}<br>Total points you have: ${result.total_points}`;
 
