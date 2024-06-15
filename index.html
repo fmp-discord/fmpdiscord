@@ -117,7 +117,7 @@
         <div id="result"></div>
     </div>
 
-   <script>
+  <script>
     // Retrieve saved Discord User ID from localStorage if available
     const savedDiscordId = localStorage.getItem('savedDiscordId');
     if (savedDiscordId) {
@@ -137,7 +137,7 @@
         localStorage.setItem('savedDiscordId', data['discord_id']);
 
         // Update fetch URL to your Flask backend's URL
-        fetch('https://your-flask-app.herokuapp.com/submit', {
+        fetch('https://your-replit-app-url/submit', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -162,6 +162,7 @@
         });
     });
 </script>
+
     
 </body>
 </html>
