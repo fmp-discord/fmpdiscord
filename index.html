@@ -29,15 +29,14 @@
             width: 100%;
             max-width: 400px;
             text-align: center;
-            animation: fadeIn 0.6s ease-in-out;
+            animation: slideIn 0.5s ease-out;
         }
 
-        @keyframes fadeIn {
+        @keyframes slideIn {
             0% {
                 opacity: 0;
                 transform: translateY(-20px);
             }
-
             100% {
                 opacity: 1;
                 transform: translateY(0);
@@ -126,7 +125,7 @@
                 data[key] = value;
             });
 
-            fetch('/submit', {  // Use relative URL to submit to the Flask backend
+            fetch('/submit', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -136,9 +135,9 @@
             .then(response => response.json())
             .then(result => {
                 let message = result.message;
-                if (result.cooldown_time_minutes) {
-                    const hours = Math.floor(result.cooldown_time_minutes / 60);
-                    const minutes = Math.floor(result.cooldown_time_minutes % 60);
+                if (result.cooldown_time) {
+                    const hours = Math.floor(result.cooldown_time);
+                    const minutes = Math.floor((result.cooldown_time % 1) * 60);
                     message += `<br>Come back after ${hours} hours and ${minutes} minutes.`;
                 }
                 message += `<br>Your total points: ${result.total_points}<br>Total points you have: ${result.total_points}`;
